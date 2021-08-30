@@ -17,10 +17,10 @@ module EClassId = struct
 
   let%test "IDs print correctly" =
     let store = Id.create_store () in
-    Alcotest.(check' string)
-      ~msg:"should pretty print as e0"
-      ~expected:"e0"
-      ~actual:(str pp (Id.make store ()))
+    Alcotest.(check string)
+      "should pretty print as e0"
+      "e0" (str pp (Id.make store ()))
+
 end
 
 
@@ -72,18 +72,18 @@ module ENode = struct
       pp_print_string fmt ")"
 
   let%test "leaf nodes prints correctly" =
-    Alcotest.(check' string)
-      ~msg:"should pretty print as sexp"
-      ~expected:"example"
-      ~actual:(str (pp ~pp_id:EClassId.pp)
+    Alcotest.(check string)
+      "should pretty print as sexp"
+      "example"
+      (str (pp ~pp_id:EClassId.pp)
                  (Symbol.intern "example", []))
 
   let%test "node prints correctly" =
     let store = Id.create_store () in
-    Alcotest.(check' string)
-      ~msg:"should pretty print as sexp"
-      ~expected:"(example e0 e1 e2)"
-      ~actual:(str (pp ~pp_id:EClassId.pp)
+    Alcotest.(check string)
+      "should pretty print as sexp"
+      "(example e0 e1 e2)"
+      (str (pp ~pp_id:EClassId.pp)
                  (Symbol.intern "example",
                   List.init 3 (fun _ -> Id.make store ()))
               )
