@@ -1,0 +1,6 @@
+(library
+ (name ppx_sexp)
+ (modules ppx_sexp)
+ (kind ppx_rewriter)
+ (libraries ppxlib sexplib)
+ (preprocess (pps ppxlib.metaquot ppx_deriving.std)))

@@ -1,0 +1,23 @@
+(lang dune 2.9)
+(package
+ (name ego)
+ (synopsis "Ego (EGraphs OCaml) is extensible EGraph library for OCaml.")
+ (description
+  "Ego is an exensible egraph library for OCaml loosely based on the egg library in Rust.")
+ (depends
+  (ocaml (>= 4.0.8))
+  (containers (>= 3.3))
+  (containers-data (>= 3.3))
+  (iter (>= 1.2.1))
+  (ppx_deriving (>= 4.4))
+  (ocamldot (>= 1.1))
+  (sexplib (>= v0.14.0))))
+(version 0.0.4)
+(name ego)
+(generate_opam_files true)
+(license AGPL-3.0+)
+(source (uri git+https://gitlab.com/gopiandcode/ego.git))
+(bug_reports https://gitlab.com/gopiandcode/ego/issues)
+(homepage https://gitlab.com/gopiandcode/ego)
+(authors "Kiran Gopinathan")
+(maintainers "kirang@comp.nus.edu.sg")

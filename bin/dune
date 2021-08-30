@@ -1,0 +1,5 @@
+(executable
+ (name main)
+ (libraries ego feather dot)
+ (preprocess (pps ppx_sexp ppx_deriving.std))
+)

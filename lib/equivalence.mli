@@ -1,0 +1,17 @@
+module Make : functor () -> sig
+  type store
+  type t = private int
+
+  val repr : t -> int
+  val create_store : unit -> store
+  val make : store -> unit -> t
+  val find : store -> t -> t
+
+  val equal : store -> t -> t -> bool
+  val union : store -> t -> t -> t
+  val hash: t -> int
+
+  module Map : Hashtbl.S with type key = t
+
+  module Set : CCHashSet.S with type elt = t 
+end
