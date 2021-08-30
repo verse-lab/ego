@@ -12,6 +12,9 @@ module EClassId = struct
     Format.pp_print_string fmt @@ Printf.sprintf "e%d" (Id.repr id)
   let show = str pp
 
+  let compare (a:t) (b: t) =
+    Int.compare (a :> int) (b :> int)
+
   let%test "IDs print correctly" =
     let store = Id.create_store () in
     Alcotest.(check' string)

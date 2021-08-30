@@ -3,8 +3,30 @@ open Language
 open Types
 module Id = Id
 
-let lappend_pair a (b,c) = (a,b,c)
+let dedup cmp vec =
+  let prev = ref None in
+  Vector.filter_in_place (fun elt ->
+    match !prev with
+    | None -> prev := Some elt; true
+    | Some last_value ->
+      if Int.equal (cmp last_value elt) 0
+      then false
+      else begin
+        prev := Some elt;
+        true
+      end
+  ) vec
+
+
+(* let lappend_pair a (b,c) = (a,b,c) *)
 type 'a query = 'a Query.t
+
+type ('node, 'data) eclass = {
+  mutable id: Id.t;
+  nodes: 'node Vector.vector;
+  mutable data: 'data;
+  parents: ('node * Id.t) Vector.vector;
+}
 
 type ('node, 'analysis, 'data, 'permission) egraph = {
   mutable version: int;
@@ -12,62 +34,59 @@ type ('node, 'analysis, 'data, 'permission) egraph = {
 
   uf: Id.store;                                        (* tracks equivalence classes of
                                                           class ids  *)
-  class_members:
-    (('node * Id.t) Vector.vector * 'data option) Id.Map.t;       (* maps classes to the canonical nodes
+  class_data:
+    ('node, 'data) eclass Id.Map.t;       (* maps classes to the canonical nodes
                                                                      they contain, and any classes that are
                                                                      children of these nodes *)
   hash_cons: ('node, Id.t) Hashtbl.t;                  (* maps cannonical nodes to their
                                                           equivalence classes *)
-  worklist: Id.t Vector.vector;                        (* List of equivalence classes for which
-                                                          nodes are out of date - i.e
-                                                          cannoncial(node) != node *)
+  pending: ('node * Id.t) Vector.vector;
+
+  pending_analysis: ('node * Id.t) Vector.vector;
 }
 
 
-module MakeInt (L: LANGUAGE) = struct
+module MakeInt (L: LANGUAGE) (* (A: ANALYSIS) *) = struct
 
   let (.@[]) self fn = fn self [@@inline always]
-
 
   (* *** Initialization *)
   let init analysis = {
     version=0;
     analysis;
     uf=Id.create_store ();
-    class_members=Id.Map.create 10;
+    class_data=Id.Map.create 10;
     hash_cons=Hashtbl.create 10;
-    worklist=Vector.create ();
+    pending=Vector.create ();
+    pending_analysis=Vector.create ();
   }
 
+  (* *** Eclasses *)
   let get_analysis self = self.analysis
 
-  (* *** Eclasses *)
-  let new_class self =
-    let id = Id.make self.uf () in
-    id
+  let get_class_data self id =
+    match Id.Map.find_opt self.class_data id with
+    | Some data -> data
+    | None -> failwith @@ Printf.sprintf "attempted to set the data of an unbound class %s " (EClassId.show id)
 
-  let get_class_members self id =
-    match Id.Map.find_opt self.class_members id with
-    | Some (classes, _) -> classes
-    | None ->
-      let cls = Vector.create () in
-      Id.Map.add self.class_members id (cls, None);
-      cls
+  let remove_class_data self id =
+    match Id.Map.find_opt self.class_data id with
+    | Some classes -> Id.Map.remove self.class_data id; Some classes
+    | None -> None
 
   let set_data self id data =
-    let (classes, _) = Id.Map.find self.class_members (Id.find self.uf id) in
-    Id.Map.replace self.class_members (Id.find self.uf id) (classes, Some data)
+    match Id.Map.find_opt self.class_data id with
+    | None -> failwith @@ Printf.sprintf "attempted to set the data of an unbound class %s " (EClassId.show id)
+    | Some class_data -> class_data.data <- data
 
   let get_data self id =
-    let (_, data) = Id.Map.find self.class_members (Id.find self.uf id) in
-    Option.get_exn data
+    match Id.Map.find_opt self.class_data (Id.find self.uf id) with
+    | None -> failwith @@ Printf.sprintf "attempted to get the data of an unbound class %s " (EClassId.show id)
+    | Some class_data -> class_data.data
 
   let canonicalise self node = L.map_children node (Id.find self.uf)
 
   let find self vl = Id.find self.uf vl
-
-  let append_to_worklist self vl =
-    Vector.push self.worklist vl
 
   (* *** Exports *)
   (* **** Export eclasses *)
@@ -86,101 +105,25 @@ module MakeInt (L: LANGUAGE) = struct
 
 end
 
-module MakePrinter (L: LANGUAGE) (A: sig type[@warning "-34"] t type data [@@deriving show] end) = struct
+module MakePrinter (L: LANGUAGE) (A: ANALYSIS) = struct
 
   open (MakeInt(L))
-
-  (* *** Pretty printing *)
-  let pp fmt self =
-    let eclasses = eclasses self in
-    let rec pp_node_by_id fmt id =
-      let vls = Id.Map.find eclasses id in
-      let open Format in
-      pp_print_string fmt "{";
-      pp_open_hovbox fmt 1;
-      Vector.pp
-        ~pp_sep:(fun fmt () -> pp_print_string fmt ","; pp_print_space fmt ())
-        (L.pp_shape pp_node_by_id) fmt vls;
-      pp_close_box fmt ();
-      pp_print_string fmt "}" in
-    let pp fmt self = 
-      let open Format in
-      pp_print_string fmt "(egraph";
-      pp_open_hovbox fmt 1;
-      pp_print_space fmt ();
-      pp_print_string fmt "(eclasses ";
-      pp_open_hvbox fmt 1;
-      Id.Map.to_seq self.class_members
-      |> Seq.to_list
-      |> pp_print_list ~pp_sep:pp_print_space
-           (fun fmt (cls, (elts, data)) ->
-              pp_print_string fmt "(";
-              pp_open_hvbox fmt 1;
-              EClassId.pp fmt cls;
-              if not @@ Vector.is_empty elts then
-                pp_print_space fmt ();
-              Vector.pp ~pp_sep:pp_print_space
-                (fun fmt (node, id) ->
-                   pp_print_string fmt "(";
-                   pp_open_hbox fmt ();
-                   EClassId.pp fmt id;
-                   pp_print_space fmt ();
-                   L.pp_shape pp_node_by_id fmt node; 
-                   begin match data with
-                   | None -> ()
-                   | Some data -> 
-                     pp_print_space fmt ();
-                     pp_print_string fmt ":";
-                     A.pp_data fmt data;
-                   end;
-                   pp_close_box fmt ();
-                   pp_print_string fmt ")";
-                ) fmt elts;
-              pp_close_box fmt ();
-              pp_print_string fmt ")";
-           ) fmt;
-      pp_close_box fmt ();
-      pp_print_string fmt ")";
-      pp_print_space fmt ();
-      pp_print_string fmt "(enodes ";
-      pp_open_hvbox fmt 1;
-      Hashtbl.to_seq self.hash_cons
-      |> Seq.to_list
-      |> pp_print_list ~pp_sep:pp_print_space
-           (fun fmt (node, cls) ->
-              pp_print_string fmt "(";
-              pp_open_hvbox fmt 1;
-              EClassId.pp fmt cls;
-              pp_print_space fmt ();
-              L.pp_shape pp_node_by_id fmt node; 
-              pp_close_box fmt ();
-              pp_print_string fmt ")";
-           ) fmt;
-      pp_close_box fmt ();
-      pp_print_string fmt ")";
-      pp_close_box fmt ();
-      pp_print_string fmt ")" in
-    pp fmt self
 
   (* **** Export as dot *)
   let to_dot self =
     let eclasses = eclasses self in
 
     let pp_node_by_id fmt id =
-      let seen_set = Id.Set.create 10 in
-      let rec  pp_node_by_id fmt id =
+      let pp_node_by_id fmt id =
         let id = self.@[find] id in
-        if Id.Set.mem seen_set id
-        then ()
-        else begin
-          Id.Set.insert seen_set id;
-          let vls = Id.Map.find eclasses id in
+        begin
+          let vls = Id.Map.find_opt eclasses id |> Option.get_or ~default:(Vector.create ()) in
           let open Format in
           pp_print_string fmt "{";
           pp_open_hovbox fmt 1;
           Vector.pp
             ~pp_sep:(fun fmt () -> pp_print_string fmt ","; pp_print_space fmt ())
-            (L.pp_shape pp_node_by_id) fmt vls;
+            (L.pp_shape EClassId.pp) fmt vls;
           pp_close_box fmt ();
           pp_print_string fmt "}"
         end in
@@ -274,9 +217,9 @@ module MakeExtractor (L: LANGUAGE) (E: COST with type node := Id.t L.shape) = st
       else None in
     let make_pass enodes =
       let cost, node =
-      Vector.to_iter enodes
-      |> Iter.map (fun n -> (node_total_cost n, n))
-      |> Iter.min_exn ~lt:(fun (c1, _) (c2, _) ->
+        Vector.to_iter enodes
+        |> Iter.map (fun n -> (node_total_cost n, n))
+        |> Iter.min_exn ~lt:(fun (c1, _) (c2, _) ->
           (match c1, c2 with
            | None, None -> 0
            | Some _, None -> -1
@@ -311,10 +254,10 @@ end
 (* ** Graph *)
 module MakeOps
     (L: LANGUAGE)
-    (A: sig type t type data [@@deriving eq] end)
+    (A: ANALYSIS)
     (AM: sig
        val make: (Id.t L.shape, A.t, A.data, ro) egraph -> Id.t L.shape -> A.data
-       val merge: A.t -> A.data -> A.data -> A.data
+       val merge: A.t -> A.data -> A.data -> A.data * (bool * bool)
        val modify: (Id.t L.shape, A.t, A.data, rw) egraph -> Id.t -> unit
      end) =
 struct
@@ -339,28 +282,43 @@ struct
 
   end
 
+  let new_class self =
+    let id = Id.make self.uf () in
+    Id.Map.add self.class_data id {id; nodes=Vector.create (); data=A.default; parents=Vector.create ()};
+    id
+
   let freeze (graph: (_, _, _, rw) egraph) = (graph:> (_, _, _, ro) egraph)
 
   (* Adds a node into the egraph, assuming that the cannonical version
      of the node is up to date in the hash cons or 
   *)
-  let add_enode self (enode: Id.t L.shape) =
-    let node = self.@[canonicalise] enode in
-    let id = match Hashtbl.find_opt self.hash_cons enode with
+  let add_enode self (node: Id.t L.shape) =
+    let node = self.@[canonicalise] node in
+    let id = match Hashtbl.find_opt self.hash_cons node with
       | None ->
         self.version <- self.version + 1;
-        (* There are no nodes congruent to this node in the graph *)
-        let id = self.@[new_class] in
-        let cls = self.@[get_class_members] id in
-        Vector.append_list cls @@ List.map (fun child ->
-          (node, child)
+        let id = Id.make self.uf () in
+        let cls = {
+          id;
+          nodes=Vector.of_list [node];
+          data = AM.make (freeze self) node;
+          parents=Vector.create ()
+        } in
+        
+        List.iter (fun child ->
+          let tup = (node, id) in
+          Vector.push ((self.@[get_class_data] child).parents) tup
         ) (L.children node);
-        Hashtbl.replace self.hash_cons node id;
-        let data = AM.make (freeze self) enode in
-        self.@[set_data] id data;
+
+        Vector.push self.pending (node,id);
+
+        Id.Map.add self.class_data id cls;
+
+        Hashtbl.add self.hash_cons node id;
+
         AM.modify self id;
         id
-      | Some id -> id in
+      | Some id -> self.@[find] id in
     Id.find self.uf id
 
   let rec add_node self (L.Mk op: L.t) : Id.t =
@@ -373,65 +331,92 @@ struct
       let enode = L.make sym (List.map (fun arg -> self.@[subst] arg env) args) in
       self.@[add_enode] enode
 
-  let merge self a b =
+  let merge self id1 id2 =
     let (+=) va vb = Vector.append va vb in
-    let a = Id.find self.uf a in
-    let b = Id.find self.uf b in
-    if Id.eq_id a b then ()
+    let id1 = Id.find self.uf id1 in
+    let id2 = Id.find self.uf id2 in
+    if Id.eq_id id1 id2 then ()
     else begin
       self.version <- self.version + 1;
-      let a_data, b_data = self.@[get_data] a, self.@[get_data] b in
-      assert (Id.eq_id a (Id.union self.uf a b));
-      self.@[get_class_members] b += self.@[get_class_members] a;
-      Vector.clear (self.@[get_class_members] a);
-      self.@[set_data] b (AM.merge self.analysis a_data b_data);
-      self.@[append_to_worklist] b;
+      (* cls2 has fewer children *)
+      let id1, id2 =
+        if Vector.length (self.@[get_class_data] id1).parents < Vector.length (self.@[get_class_data] id2).parents
+        then (id2, id1)
+        else (id1, id2) in
+
+      (* make cls1 the new root *)
+      assert (Id.eq_id id1 (Id.union self.uf id1 id2));
+
+      let cls2 = self.@[remove_class_data] id2 |> Option.get_exn in
+      let cls1 = self.@[get_class_data] id1 in
+      assert (Id.eq_id id1 cls1.id);
+
+      self.pending += cls2.parents;
+
+      let (did_update_cls1, did_update_cls2) =
+        let data, res = (AM.merge self.analysis cls1.data cls2.data) in
+        cls1.data <- data;
+        res in
+
+      if did_update_cls1 then self.pending_analysis += cls1.parents;
+      if did_update_cls2 then self.pending_analysis += cls2.parents;
+
+      cls1.nodes += cls2.nodes;
+      cls1.parents += cls2.parents;
+      AM.modify self id1
     end
 
-  let repair (self: (Id.t L.shape, 'b, 'c, rw) egraph) ecls_id =
-    let (+=) va vb = Vector.append_iter va vb in
-    let uses = self.@[get_class_members] ecls_id in
-    let uses =
-      let res = Vector.copy uses in
-      Vector.clear uses;
-      res in
-    (* update canonical uses in hashcons *)
-    Vector.to_iter uses (fun (p_node, p_eclass) ->
-      Hashtbl.remove self.hash_cons p_node;
-      let p_node = self.@[canonicalise] p_node in
-      Hashtbl.replace self.hash_cons p_node (self.@[find] p_eclass)
-    );
-    let new_uses = Hashtbl.create 10  in
-    Vector.to_iter uses (fun (p_node, p_eclass) ->
-      let p_node = self.@[canonicalise] p_node in
-      begin match Hashtbl.find_opt new_uses p_node with
-      | None -> ()
-      | Some nd -> self.@[merge] p_eclass nd
-      end;
-      Hashtbl.replace new_uses p_node (self.@[find] p_eclass)
-    );
-    (self.@[get_class_members] (self.@[find] ecls_id)) += (Hashtbl.to_iter new_uses);
-    (* update eclass *)
-    AM.modify self ecls_id;
-    let uses = self.@[get_class_members] ecls_id in        
-    Vector.to_iter uses (fun (p_node, p_eclass) ->
-      let p_eclass_data = self.@[get_data] p_eclass in
-      let new_data = AM.merge self.analysis p_eclass_data (AM.make (freeze self) p_node) in
-      if not @@ A.equal_data p_eclass_data new_data
-      then begin
-        self.@[set_data] p_eclass new_data;
-        self.@[append_to_worklist] p_eclass
-      end
+  let rebuild_classes self =
+    Id.Map.to_seq_values self.class_data |> Seq.iter (fun cls ->
+      Vector.map_in_place (fun node -> self.@[canonicalise] node) cls.nodes;
+      Vector.sort' (L.compare_shape EClassId.compare) cls.nodes;
+      dedup (L.compare_shape EClassId.compare) cls.nodes
     )
 
-  let rebuild (self: (Id.t L.shape, 'b, 'c, rw) egraph) =
-    while not @@ Vector.is_empty self.worklist do
-      let worklist = Id.Set.of_iter (Vector.to_iter self.worklist |> Iter.map (self.@[find])) in
-      Vector.clear self.worklist;
-      Id.Set.to_iter worklist (fun ecls_id ->
-        self.@[repair] ecls_id
-      )
+  let process_unions self =
+    (* let init_size = Hashtbl.length self.hash_cons in     *)
+    while not @@ Vector.is_empty self.pending do
+
+      let rec update_hash_cons () =
+        match Vector.pop self.pending with
+        | None -> ()
+        | Some (node,cls) ->
+          let old_node = node in
+          let node = self.@[canonicalise] node in
+          if not @@ ((L.compare_shape EClassId.compare old_node node) = 0) then
+            Hashtbl.remove self.hash_cons old_node;
+          begin match (Hashtbl.find_opt self.hash_cons node) with
+          | None -> Hashtbl.add self.hash_cons node cls
+          | Some memo_cls -> self.@[merge] memo_cls cls
+          end;
+          update_hash_cons () in
+      update_hash_cons ();
+
+      let rec update_analysis () =
+        match Vector.pop self.pending_analysis with
+        | None -> ()
+        | Some (node, class_id) ->
+          let class_id = self.@[find] class_id in
+          let node_data = AM.make (freeze self) node in
+          let cls = self.@[get_class_data] class_id in
+          assert (Id.eq_id cls.id class_id);
+          let (did_update_left, _did_update_right) =
+            let data,res = AM.merge self.analysis cls.data node_data in
+            cls.data <- data;
+            res in
+          if did_update_left then begin
+            Vector.append self.pending_analysis cls.parents;
+            AM.modify self class_id
+          end;
+          update_analysis () in
+      update_analysis ()
     done
+    (* let _final_size = Hashtbl.length self.hash_cons in
+     * print_endline @@ Printf.sprintf "after rebuilding size of nodes is %d => %d"  init_size final_size *)
+
+  let rebuild (self: (Id.t L.shape, 'b, 'c, rw) egraph) =
+    process_unions self;
+    rebuild_classes self
 
   (* ** Matching *)
   let ematch eg (classes: (Id.t L.shape, 'a) Vector.t Id.Map.t) pattern =
@@ -459,122 +444,170 @@ struct
           | _ -> None
         end
       | p ->
-        Vector.to_iter (Id.Map.find classes eid)
-        |> Iter.find_map (fun enode -> enode_matches p enode env) in
+        Option.bind (Id.Map.find_opt classes eid)
+        (fun v -> Vector.to_iter v |> Iter.find_map (fun enode -> enode_matches p enode env)) in
     (fun f -> Id.Map.iter (Fun.curry f) classes)
     |> Iter.filter_map (fun (eid,_) ->
       match match_in pattern eid StringMap.empty with
-      | Some env -> Some ((eid, env))
+      | Some env -> Some (eid, env)
       | _ -> None
     )
 
-  (* ** Rewriting System *)
-  let apply_rules (eg: (Id.t L.shape, _, _, _) egraph) (rules : Rule.t list) =
+  let find_matches eg =
     let eclasses = eclasses eg in
-    let find_matches (from_rule, to_rule) =
-      ematch eg eclasses from_rule |> Iter.map (lappend_pair to_rule) in
-    let for_each_match = Iter.of_list rules |> Iter.flat_map find_matches in
-    for_each_match begin fun (to_rule, eid, env) ->
-      match to_rule with
-      | Constant to_rule ->
-        let new_eid = subst eg to_rule env in
-        merge eg eid new_eid
-      | Conditional (to_rule, cond) ->
-        if cond eg eid env then
-          let new_eid = subst eg to_rule env in
-          merge eg eid new_eid
-        else ()
-      | Dynamic cond ->
-        match cond eg eid env with
-        | None -> ()
-        | Some to_rule ->
-          let new_eid = subst eg to_rule env in
-          merge eg eid new_eid
-    end;
-    rebuild eg
-
-  let run_until_saturation ?node_limit ?fuel ?until eg rules =
-    match fuel, node_limit, until with
-    | None, None, None ->
-      let rec loop last_version =
-        apply_rules eg rules;
-        if not @@ Int.equal eg.version last_version
-        then loop eg.version
-        else ()  in
-      loop eg.version; true
-    | None, None, Some pred ->
-      let rec loop last_version =
-        apply_rules eg rules;
-        if not @@ Int.equal eg.version last_version
-        then if pred eg then false else loop eg.version
-        else true in
-      loop eg.version
-    | None, Some node_limit, None ->
-      let rec loop last_version =
-        apply_rules eg rules;
-        if not @@ Int.equal eg.version last_version
-        then if Hashtbl.length eg.hash_cons < node_limit
-          then loop eg.version
-          else false
-        else true  in
-      loop eg.version
-    | None, Some node_limit, Some pred ->
-      let rec loop last_version =
-        apply_rules eg rules;
-        if not @@ Int.equal eg.version last_version
-        then if Hashtbl.length eg.hash_cons < node_limit
-          then if pred eg then false else loop eg.version
-          else false
-        else false  in
-      loop eg.version
-    | Some fuel, None, None ->
-      let rec loop fuel last_version =
-        apply_rules eg rules;
-        if not @@ Int.equal eg.version last_version
-        then if fuel > 0
-          then loop (fuel - 1) eg.version
-          else false
-        else true  in
-      loop fuel eg.version
-    | Some fuel, None, Some pred ->
-      let rec loop fuel last_version =
-        apply_rules eg rules;
-        if not @@ Int.equal eg.version last_version
-        then if fuel > 0
-          then if pred eg then false else loop (fuel - 1) eg.version
-          else false
-        else true  in
-      loop fuel eg.version
-    | Some fuel, Some node_limit, None ->
-      let rec loop fuel last_version =
-        apply_rules eg rules;
-        if not @@ Int.equal eg.version last_version
-        then if fuel > 0 && Hashtbl.length eg.hash_cons < node_limit
-          then loop (fuel - 1) eg.version
-          else false
-        else true in
-      loop fuel eg.version      
-    | Some fuel, Some node_limit, Some pred ->
-      let rec loop fuel last_version =
-        apply_rules eg rules;
-        if not @@ Int.equal eg.version last_version
-        then if fuel > 0 && Hashtbl.length eg.hash_cons < node_limit
-          then if pred eg then false else loop (fuel - 1) eg.version
-          else false
-        else true in
-      loop fuel eg.version
+    fun rule ->  ematch eg eclasses rule
 
   let iter_children self cls =
-    Id.Map.find (eclasses self) (self.@[find] cls) |> Vector.to_iter
+    (* let old_cls = cls in *)
+    let cls = (self.@[find] cls) in
+    Id.Map.find_opt (eclasses self) cls |> Option.map Vector.to_iter |> Option.get_or ~default:Iter.empty
 
+  module BuildRunner (S : SCHEDULER with type 'a egraph := (Id.t L.shape, A.t, A.data, rw) egraph
+                                     and type rule := Rule.t) = struct
 
+    (* ** Rewriting System *)
+    let apply_rules scheduler iteration (eg: (Id.t L.shape, _, _, _) egraph) (rules : (Rule.t * S.data) array) =
+      let find_matches = find_matches eg in
+      let for_each_match =
+        Iter.of_array rules
+        |> Iter.flat_map (fun ((from_rule, to_rule), meta_data) ->
+          S.guard_rule_usage eg scheduler meta_data iteration (fun () -> find_matches from_rule)
+          |> Iter.map (fun (eid,env) -> (to_rule, eid, env))
+        ) in
+      for_each_match begin fun (to_rule, eid, env) ->
+        match to_rule with
+        | Rule.Constant to_rule ->
+          let new_eid = subst eg to_rule env in
+          merge eg eid new_eid
+        | Conditional (to_rule, cond) ->
+          if cond eg eid env then
+            let new_eid = subst eg to_rule env in
+            merge eg eid new_eid
+          else ()
+        | Dynamic cond ->
+          match cond eg eid env with
+          | None -> ()
+          | Some to_rule ->
+            let new_eid = subst eg to_rule env in
+            merge eg eid new_eid
+      end;
+      rebuild eg
+
+    let run_until_saturation ?scheduler ?(node_limit=`Bounded 10_000) ?(fuel=`Bounded 30) ?until eg rules =
+      let scheduler = match scheduler with None -> S.default () | Some scheduler -> scheduler in
+      let rules = Iter.of_list rules
+                  |> Iter.map (fun rule -> (rule, S.create_rule_metadata scheduler rule))
+                  |> Iter.to_array in
+      let rule_data () = Array.to_iter rules |> Iter.map snd in
+      match fuel, node_limit, until with
+      | `Unbounded, `Unbounded, None ->
+        let rec loop last_version ind =
+          apply_rules scheduler ind eg rules;
+          if not @@ Int.equal eg.version last_version
+          then loop eg.version (ind + 1)
+          else if S.should_stop scheduler ind (rule_data ()) then () else loop eg.version (ind + 1) in
+        loop eg.version 0; true
+      | `Unbounded, `Unbounded, Some pred ->
+        let rec loop last_version ind =
+          apply_rules scheduler ind eg rules;
+          if not @@ Int.equal eg.version last_version
+          then if pred eg then false else loop eg.version (ind + 1)
+          else if S.should_stop scheduler ind (rule_data ()) then true else loop eg.version (ind + 1) in
+        loop eg.version 0
+      | `Unbounded, `Bounded node_limit, None ->
+        let rec loop last_version ind =
+          apply_rules scheduler ind eg rules;
+          if not @@ Int.equal eg.version last_version
+          then if Hashtbl.length eg.hash_cons < node_limit
+            then loop eg.version (ind + 1)
+            else false
+          else if S.should_stop scheduler ind (rule_data ()) then true else loop eg.version (ind + 1)  in
+        loop eg.version 0
+      | `Unbounded, `Bounded node_limit, Some pred ->
+        let rec loop last_version ind =
+          apply_rules scheduler ind eg rules;
+          if not @@ Int.equal eg.version last_version
+          then if Hashtbl.length eg.hash_cons < node_limit
+            then if pred eg then false else loop eg.version (ind + 1)
+            else false
+          else if S.should_stop scheduler ind (rule_data ()) then true else loop eg.version (ind + 1) in
+        loop eg.version 0
+      | `Bounded fuel, `Unbounded, None ->
+        let rec loop last_version ind =
+          apply_rules scheduler ind eg rules;
+          if not @@ Int.equal eg.version last_version
+          then if fuel > ind
+            then loop eg.version (ind + 1)
+            else false
+          else if S.should_stop scheduler ind (rule_data ()) then true else loop eg.version (ind + 1) in
+        loop eg.version 0
+      | `Bounded fuel, `Unbounded, Some pred ->
+        let rec loop last_version ind =
+          apply_rules scheduler ind eg rules;
+          if not @@ Int.equal eg.version last_version
+          then if fuel > ind
+            then if pred eg then false else loop eg.version (ind + 1)
+            else false
+          else if S.should_stop scheduler ind (rule_data ()) then true else loop eg.version (ind + 1)   in
+        loop eg.version 0
+      | `Bounded fuel, `Bounded node_limit, None ->
+        let rec loop last_version ind =
+          apply_rules scheduler ind eg rules;
+          if not @@ Int.equal eg.version last_version
+          then if fuel > ind && Hashtbl.length eg.hash_cons < node_limit
+            then loop eg.version (ind + 1)
+            else false
+          else if S.should_stop scheduler ind (rule_data ()) then true else loop eg.version (ind + 1)  in
+        loop eg.version 0
+      | `Bounded fuel, `Bounded node_limit, Some pred ->
+        let rec loop last_version ind =
+          apply_rules scheduler ind eg rules;
+          if not @@ Int.equal eg.version last_version
+          then if fuel > ind && Hashtbl.length eg.hash_cons < node_limit
+            then if pred eg then false else loop eg.version (ind + 1)
+            else false
+          else if S.should_stop scheduler ind (rule_data ()) then true else loop eg.version (ind + 1) in
+        loop eg.version 0
+
+  end
+
+  include (BuildRunner (Scheduler.Backoff))
+
+  let apply_rules (eg: (Id.t L.shape, _, _, _) egraph) (rules : Rule.t list) =
+      let find_matches = find_matches eg in
+      let for_each_match =
+        Iter.of_list rules
+        |> Iter.flat_map
+             (fun (from_rule, to_rule) ->
+                find_matches from_rule
+                |> Iter.map (fun (eid,env) -> (to_rule, eid, env))
+        ) in
+      for_each_match begin fun (to_rule, eid, env) ->
+        match to_rule with
+        | Rule.Constant to_rule ->
+          let new_eid = subst eg to_rule env in
+          merge eg eid new_eid
+        | Conditional (to_rule, cond) ->
+          if cond eg eid env then
+            let new_eid = subst eg to_rule env in
+            merge eg eid new_eid
+          else ()
+        | Dynamic cond ->
+          match cond eg eid env with
+          | None -> ()
+          | Some to_rule ->
+            let new_eid = subst eg to_rule env in
+            merge eg eid new_eid
+      end;
+      rebuild eg
 end
+
 
 
 
 module Make
     (L: LANGUAGE)
-    (A: sig type t type data [@@deriving show, eq] end)
+    (A: ANALYSIS)
     (MakeAnalysisOps: functor
        (S: GRAPH_API
         with type 'p t = (Id.t L.shape, A.t, A.data, 'p) egraph
@@ -583,7 +616,7 @@ module Make
          and type 'a shape := 'a L.shape
          and type node := L.t) -> sig
        val make: (Id.t L.shape, A.t, A.data, ro) egraph -> Id.t L.shape -> A.data
-       val merge: A.t -> A.data -> A.data -> A.data
+       val merge: A.t -> A.data -> A.data -> A.data * (bool * bool)
        val modify: (Id.t L.shape, A.t, A.data, rw) egraph -> Id.t -> unit
      end)
 = struct
@@ -618,20 +651,43 @@ module Make
     val get_analysis : rw t -> A.t
     val canonicalise : rw t -> Id.t L.shape -> Id.t L.shape
     val find : ro t -> eclass_id -> eclass_id
-    val append_to_worklist : rw t -> eclass_id -> unit
+    (* val append_to_worklist : rw t -> eclass_id -> unit *)
     val eclasses: rw t -> (Id.t L.shape, Vector.rw) Vector.t Id.Map.t
-    val pp : Format.formatter -> (Id.t L.shape, 'a, A.data, _) egraph -> unit
+    (* val pp : Format.formatter -> (Id.t L.shape, 'a, A.data, _) egraph -> unit *)
     val to_dot : (Id.t L.shape, A.t, A.data, _) egraph -> Odot.graph
     val pp_dot : Format.formatter -> (Id.t L.shape, A.t, A.data, _) egraph -> unit
     val add_node : rw t -> L.t -> eclass_id
     val merge : rw t -> eclass_id -> eclass_id -> unit
     val iter_children : ro t -> eclass_id -> Id.t L.shape Iter.t
     val rebuild : rw t -> unit
+
+    val find_matches : ro t -> L.op query -> (eclass_id * eclass_id StringMap.t) Iter.t
     val apply_rules : (Id.t L.shape, A.t, A.data, rw) egraph -> Rule.t list -> unit
     val run_until_saturation:
-      ?node_limit:int -> ?fuel:int -> ?until:((Id.t L.shape, A.t, A.data, rw) egraph -> bool) -> (Id.t L.shape, A.t, A.data, rw) egraph -> Rule.t list -> bool
+      ?scheduler:Scheduler.Backoff.t ->
+      ?node_limit:[`Bounded of int | `Unbounded] ->
+      ?fuel:[`Bounded of int | `Unbounded] ->
+      ?until:((Id.t L.shape, A.t, A.data, rw) egraph -> bool) -> (Id.t L.shape, A.t, A.data, rw) egraph -> Rule.t list -> bool
+
+    module BuildRunner (S : SCHEDULER
+                        with type 'a egraph := (Id.t L.shape, A.t, A.data, rw) egraph
+                         and type rule := Rule.t) :
+    sig 
+      val apply_rules :
+        S.t ->
+        int ->
+        (Id.t L.shape, A.t, A.data, rw) egraph ->
+        (Rule.t * S.data) array -> unit
+      val run_until_saturation :
+        ?scheduler:S.t ->
+        ?node_limit:[`Bounded of int | `Unbounded] ->
+        ?fuel:[`Bounded of int | `Unbounded] ->
+        ?until:((Id.t L.shape, A.t, A.data, rw) egraph -> bool) ->
+        (Id.t L.shape, A.t, A.data, rw) egraph -> Rule.t list -> bool
+    end
   end
   = struct
+    let _unsafe = 10
     type 'p t = (Id.t L.shape, A.t, A.data, 'p) egraph
     include (MakeInt (L))
     include (MakePrinter (L) (A))
@@ -639,7 +695,7 @@ module Make
   end
   and Analysis : sig
     val make: (Id.t L.shape, A.t, A.data, ro) egraph -> Id.t L.shape -> A.data
-    val merge: A.t -> A.data -> A.data -> A.data
+    val merge: A.t -> A.data -> A.data -> A.data * (bool * bool)
     val modify: (Id.t L.shape, A.t, A.data, rw) egraph -> Id.t -> unit
   end = MakeAnalysisOps (EGraph)
 

@@ -29,6 +29,7 @@ end
 module type ANALYSIS = sig
   type t
   type data [@@deriving show, eq]
+  val default: data
 end
 
 module type ANALYSIS_OPS = sig
@@ -37,7 +38,7 @@ module type ANALYSIS_OPS = sig
   type node
   type data
   val make : ro t -> node -> data
-  val merge : analysis -> data -> data -> data
+  val merge : analysis -> data -> data -> data * (bool * bool)
   val modify : rw t -> Id.t -> unit
 end
 
@@ -85,16 +86,24 @@ module type RULE = sig
 
 end
 
-module SCHEDULER = sig
-
-  type t 
+module type SCHEDULER = sig
 
   type 'a egraph
 
-  type rule
-  
-  val can_stop: t -> int -> bool
+  type t
 
-  val search_rewrite: t -> int -> rw egraph -> rule -> 
+  type data
+
+  type rule
+
+  val default : unit -> t
+
+  val should_stop: t -> int -> data Iter.t -> bool
+
+  val create_rule_metadata: t -> rule -> data
+
+  val guard_rule_usage:
+    rw egraph -> t -> data -> int ->
+    (unit -> (Id.t * Id.t StringMap.t) Iter.t) -> (Id.t * Id.t StringMap.t) Iter.t
 
 end

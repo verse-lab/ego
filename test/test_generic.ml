@@ -85,7 +85,7 @@ module C = struct
     | L.Const _ -> 1.0
 end
 
-module A = struct type t = unit type data = int option [@@deriving eq, show] end
+module A = struct type t = unit type data = int option [@@deriving eq, show] let default = None end
 module MA (S : GRAPH_API
            with type 'p t = (Ego.Id.t L.shape, A.t, A.data, 'p) egraph
             and type 'a shape := 'a L.shape
@@ -107,11 +107,12 @@ module MA (S : GRAPH_API
     fun graph term ->
     eval (L.map_children term (S.get_data graph))
 
-  let merge : A.t -> A.data -> A.data -> A.data =
+  let merge : A.t -> A.data -> A.data -> A.data * (bool * bool) =
     fun () l r ->  match l,r with
-      | Some l, _ -> Some l
-      | _, Some r -> Some r
-      | _ -> None
+      | Some l, Some r -> assert (l = r); Some l, (false, false)
+      | Some l, None -> Some l, (false, true)
+      | None, Some r -> Some r, (true, false)
+      | _ -> None, (false, false)
 
   let modify : 'a t -> Ego.Id.t -> unit =
     fun graph cls ->
@@ -229,7 +230,7 @@ let conditional_rewrite () =
 
 
 let () =
-  Alcotest.run ~verbose:true ~compact:false "generic" [
+  Alcotest.run "generic" [
     ("documentation", [
        "example given in documentation works as written", `Quick, documentation_example;
        "simple constant folding", `Quick, simple_constant_folding;

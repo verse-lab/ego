@@ -208,6 +208,8 @@ module EGraph = struct
     else begin
       self.version <- self.version + 1;
       assert (Id.eq_id a (Id.union self.uf a b));
+      assert (Id.eq_id a (Id.find self.uf a));
+      assert (Id.eq_id a (Id.find self.uf b));
       self.@[get_class_members] b += self.@[get_class_members] a;
       Vector.clear (self.@[get_class_members] a);
       self.@[append_to_worklist] b;

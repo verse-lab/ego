@@ -1,5 +1,11 @@
 open Containers
 open Ego.Generic
+let sexp =
+  (module struct
+    type t = Sexplib.Sexp.t
+    let pp = Sexplib.Sexp.pp_hum
+    let equal = Sexplib.Sexp.equal
+  end : Alcotest.TESTABLE with type t = Sexplib.Sexp.t)
 
 module Symbol : sig
   type t
@@ -143,7 +149,7 @@ module C = struct
     L.children term |> List.fold_left (fun acc vl -> acc + f vl) base_cost
 end
 
-module A = struct type t = unit type data = float option [@@deriving eq, show] end
+module A = struct type t = unit type data = float option [@@deriving eq, show] let default = None end
 module MA (S : GRAPH_API
            with type 'p t = (Ego.Id.t L.shape, A.t, A.data, 'p) egraph
             and type 'a shape := 'a L.shape
@@ -165,11 +171,13 @@ module MA (S : GRAPH_API
     fun graph term ->
     eval (L.map_children term (S.get_data graph))
 
-  let merge : A.t -> A.data -> A.data -> A.data =
+  let merge : A.t -> A.data -> A.data -> A.data * (bool * bool) =
     fun () l r ->  match l,r with
-      | Some l, _ -> Some l
-      | _, Some r -> Some r
-      | _ -> None
+      | Some l, Some r when Float.equal l r -> Some l, (false, false)
+      | Some l, Some r -> failwith @@ Printf.sprintf "could not merege values %f <> %f" l r
+      | Some l, _ -> Some l, (false, true)
+      | _, Some r -> Some r, (true, false)
+      | _ -> None, (false,false)
 
   let modify : 'a t -> Ego.Id.t -> unit =
     fun graph cls ->

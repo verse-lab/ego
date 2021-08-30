@@ -3,7 +3,7 @@ open Language
 type ('node, 'analysis, 'data, 'permission) egraph
 
 module MakePrinter : functor (L : LANGUAGE) (A : ANALYSIS) -> sig
-  val pp : Format.formatter -> (Id.t L.shape, A.t, A.data, 'b) egraph -> unit
+  (* val pp : Format.formatter -> (Id.t L.shape, A.t, A.data, 'b) egraph -> unit *)
   val to_dot : (Id.t L.shape, A.t, A.data, 'b) egraph -> Odot.graph
   val pp_dot : Format.formatter -> (Id.t L.shape, A.t, A.data, 'b) egraph -> unit
 end
@@ -43,17 +43,36 @@ module Make :
     val get_analysis: rw t -> A.t
     val canonicalise : rw t -> Id.t L.shape -> Id.t L.shape
     val find : ro t -> Id.t -> Id.t
-    val append_to_worklist : rw t -> Id.t -> unit
     val eclasses: rw t -> (Id.t L.shape, Containers.Vector.rw) Containers.Vector.t Id.Map.t
     val iter_children : ro t -> Id.t -> Id.t L.shape Iter.t
-    val pp : Format.formatter -> (Id.t L.shape, 'a, A.data, _) egraph -> unit
     val to_dot : (Id.t L.shape, A.t, A.data, _) egraph -> Odot.graph
     val pp_dot : Format.formatter -> (Id.t L.shape, A.t, A.data, _) egraph -> unit
     val add_node : rw t -> L.t -> Id.t
     val merge : rw t -> Id.t -> Id.t -> unit
     val rebuild : rw t -> unit
+    val find_matches : ro t -> L.op Query.t -> (Id.t * Id.t StringMap.t) Iter.t
     val apply_rules : (Id.t L.shape, A.t, A.data, rw) egraph -> Rule.t list -> unit
     val run_until_saturation:
-      ?node_limit:int -> ?fuel:int -> ?until:((Id.t L.shape, A.t, A.data, rw) egraph -> bool) -> (Id.t L.shape, A.t, A.data, rw) egraph -> Rule.t list -> bool
+      ?scheduler:Scheduler.Backoff.t ->
+      ?node_limit:[`Bounded of int | `Unbounded] ->
+      ?fuel:[`Bounded of int | `Unbounded] ->
+      ?until:((Id.t L.shape, A.t, A.data, rw) egraph -> bool) -> (Id.t L.shape, A.t, A.data, rw) egraph -> Rule.t list -> bool
+
+    module BuildRunner (S : SCHEDULER
+                        with type 'a egraph := (Id.t L.shape, A.t, A.data, rw) egraph
+                         and type rule := Rule.t) :
+    sig 
+      val apply_rules :
+        S.t ->
+        int ->
+        (Id.t L.shape, A.t, A.data, rw) egraph ->
+        (Rule.t * S.data) array -> unit
+      val run_until_saturation :
+        ?scheduler:S.t ->
+        ?node_limit:[`Bounded of int | `Unbounded] ->
+        ?fuel:[`Bounded of int | `Unbounded] ->
+        ?until:((Id.t L.shape, A.t, A.data, rw) egraph -> bool) ->
+        (Id.t L.shape, A.t, A.data, rw) egraph -> Rule.t list -> bool
+    end
 
   end

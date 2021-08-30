@@ -148,7 +148,7 @@ module C = struct
     L.children term |> List.fold_left (fun acc vl -> acc + f vl) base_cost
 end
 
-module A = struct type t = unit type data = float option [@@deriving eq, show] end
+module A = struct type t = unit type data = float option [@@deriving eq, show] let default = None end
 module MA (S : GRAPH_API
            with type 'p t = (Ego.Id.t L.shape, A.t, A.data, 'p) egraph
             and type 'a shape := 'a L.shape
@@ -170,11 +170,15 @@ module MA (S : GRAPH_API
     fun graph term ->
     eval (L.map_children term (S.get_data graph))
 
-  let merge : A.t -> A.data -> A.data -> A.data =
+  let merge : A.t -> A.data -> A.data -> A.data * (bool * bool)=
     fun () l r ->  match l,r with
-      | Some l, _ -> Some l
-      | _, Some r -> Some r
-      | _ -> None
+      | Some l, Some r ->
+        if Float.equal l r
+        then Some l, (false,false)
+        else failwith @@ Printf.sprintf "merge failed: float values %f <> %f " l r
+      | Some l, _ -> Some l, (false, true)
+      | _, Some r -> Some r, (true, false)
+      | _ -> None, (false,false)
 
   let modify : 'a t -> Ego.Id.t -> unit =
     fun graph cls ->
@@ -355,72 +359,67 @@ let () =
      ]);
      "proving arithmetic with full rule set", [
        "subtraction works with symbols", `Quick,
-       check_proves_equal ~node_limit:10_000 ~fuel:30 rules
+       check_proves_equal ~node_limit:(`Bounded 10_000) ~fuel:(`Bounded 30) rules
          [%s (x - x)] [%s 0.];
        "subtraction works with non obvious equalities", `Quick,
-       check_proves_equal ~node_limit:10_000 ~fuel:30 rules
+       check_proves_equal ~node_limit:(`Bounded 10_000) ~fuel:(`Bounded 30) rules
          [%s (x - (x + 0))] [%s 0.];
        "subtraction works with complex expressions", `Quick,
-       check_proves_equal ~node_limit:10_000 ~fuel:30 rules
+       check_proves_equal ~node_limit:(`Bounded 10_000) ~fuel:(`Bounded 30) rules
          [%s ((sqrt 5.) - (sqrt 5.))] [%s 0.];
        "subtraction works with complex expressions and addition", `Quick,
-       check_proves_equal ~node_limit:10_000 ~fuel:30 rules
+       check_proves_equal ~node_limit:(`Bounded 10_000) ~fuel:(`Bounded 30) rules
          [%s ((1 + (sqrt 5.)) - ((sqrt 5.) + 1))] [%s 0.];
        "multiplication is rewritten", `Quick,
-       check_proves_equal ~node_limit:75_000 ~fuel:30 rules
+       check_proves_equal ~node_limit:(`Bounded 75_000) ~fuel:(`Bounded 30) rules
          [%s (1 - x)] [%s (1 + ("-1." * x))];
        "multiplication is propagated", `Quick,
-       check_proves_equal ~node_limit:75_000 ~fuel:30 rules
+       check_proves_equal ~node_limit:(`Bounded 75_000) ~fuel:(`Bounded 30) rules
          [%s ((1 - x) + x)] [%s (1 + (x + ("-1." * x)))];
        "1subtraction can be reverted", `Quick,
-       check_proves_equal ~node_limit:75_000 ~fuel:30 rules
+       check_proves_equal ~node_limit:(`Bounded 75_000) ~fuel:(`Bounded 30) rules
          [%s (1 + ("-1." * x))] [%s (1 - x)];
        "subtraction can be cancelled", `Quick,
-       check_proves_equal ~node_limit:75_000 ~fuel:30 rules
+       check_proves_equal ~node_limit:(`Bounded 75_000) ~fuel:(`Bounded 30) rules
          [%s (x + ("-1." * x))] [%s 0];
        "subtraction can be propagated and cancelled", `Quick,
-       check_proves_equal ~node_limit:100_000_000 ~fuel:30 rules
+       check_proves_equal ~node_limit:(`Bounded 100_000_000) ~fuel:(`Bounded 30) rules
          [%s (1 + (x - x))] [%s ((1 - x) + x) ];
        "complex subtraction can be propagated and cancelled", `Quick,
-       check_proves_equal ~node_limit:100_000_000 ~fuel:30 rules
+       check_proves_equal ~node_limit:(`Bounded 100_000_000) ~fuel:(`Bounded 30) rules
          [%s (1 + (x - x))] [%s ((1 - x) + x) ];
        "plus minus one can be propagated and cancelled", `Quick,
-       check_proves_equal ~node_limit:100_000_000 ~fuel:30 rules
+       check_proves_equal ~node_limit:(`Bounded 100_000_000) ~fuel:(`Bounded 30) rules
          [%s ((1 - x) + (1 + x)) ] [%s 2];
        "division can be simplified", `Quick,
-       check_proves_equal ~node_limit:100_000_000 ~fuel:30 rules
+       check_proves_equal ~node_limit:(`Bounded 100_000_000) ~fuel:(`Bounded 30) rules
          [%s (2 / 2) ] [%s 1];
        "division with numerator 0 can be simplified", `Quick,
-       check_proves_equal ~node_limit:100_000_000 ~fuel:30 rules
+       check_proves_equal ~node_limit:(`Bounded 100_000_000) ~fuel:(`Bounded 30) rules
          [%s ((x - x) / 2) ] [%s 0];
        "multiplication with 0 is simplified", `Quick,
-       check_proves_equal ~node_limit:100_000_000 ~fuel:30 rules
+       check_proves_equal ~node_limit:(`Bounded 100_000_000) ~fuel:(`Bounded 30) rules
          [%s (x * 0.) ] [%s 0];
      ];
      "does not prove invalid equalities", [
        "multiplication and addition are not equal", `Quick,
-      check_cannot_prove_equal ~node_limit:10_000 ~fuel:30 rules [%s (x + y)] [%s (x / y)]
+      check_cannot_prove_equal ~node_limit:(`Bounded 10_000) ~fuel:(`Bounded 30) rules [%s (x + y)] [%s (x / y)]
      ];
      "reasoning about derivatives", [
        "dx/dy of x is 1", `Quick,
-       check_proves_equal ~node_limit:10_000 ~fuel:30 rules
+       check_proves_equal ~node_limit:(`Bounded 10_000) ~fuel:(`Bounded 30) rules
          [%s (d x x)]  [%s 1 ];
        "dx/dy of y is 0", `Quick,
-       check_proves_equal ~node_limit:10_000 ~fuel:30 rules
+       check_proves_equal ~node_limit:(`Bounded 10_000) ~fuel:(`Bounded 30) rules
          [%s (d x y)]  [%s 0 ];
        "dx/dy of 1 + 2x is 2", `Quick,
-       check_proves_equal ~node_limit:100_000 ~fuel:35 rules
-         [%s (d x ((2. * x) + 1.))]  [%s 2. ];
+       check_proves_equal ~node_limit:(`Bounded 100_000) ~fuel:(`Bounded 35) rules
+         [%s (d x (1 + (2. * x)))]  [%s 2. ];
        "dx/dy of xy + 1 is y", `Quick,
-       check_proves_equal ~node_limit:100_000 ~fuel:35 rules
-         [%s (d x ((y * x) + 1.))]  [%s y ];
+       check_extract ~node_limit:(`Unbounded) ~fuel:(`Bounded 100) rules
+         [%s (d x (1. + (y * x)))]  [%s y ];
        "dx/dy of ln x is 1 / x", `Quick,
-       check_proves_equal ~node_limit:100_000 ~fuel:35 rules
+       check_proves_equal ~node_limit:(`Bounded 100_000) ~fuel:(`Bounded 35) rules
          [%s (d x (ln x))]  [%s 1 / x ];
-     ];
-     "reasoning about derivatives of powers", [
-       "dx/dy of x ^ 2 is 3 x ^ 2", `Quick,
-       check_extract ~node_limit:175_000 ~fuel:35 rules
-         [%s (d x (pow x 3))]  [%s ( 3 * (pow x 2)) ];
      ];
     ]

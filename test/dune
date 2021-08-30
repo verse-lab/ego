@@ -1,4 +1,4 @@
 (tests
- (names test_basic test_generic test_math)
+ (names test_basic test_generic test_math test_prop)
  (preprocess (pps ppx_sexp ppx_deriving.std))
  (libraries ego alcotest))
