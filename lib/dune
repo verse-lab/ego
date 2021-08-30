@@ -1,7 +1,7 @@
 (library
  (name ego)
  (public_name ego)
- (libraries containers iter bos dot containers-data sexplib)
+ (libraries containers iter dot containers-data sexplib)
  (inline_tests)
  (preprocess (pps ppx_inline_alcotest ppx_deriving.std)))
 
