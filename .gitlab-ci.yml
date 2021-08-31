@@ -1,15 +1,10 @@
 image: alpine:latest
 
-workflow:
-  rules:
-    - if: '$CI_COMMIT_BRANCH'
-
 pages:
-  scripts:
-    - echo 'Nothing to do...'
+  script:
+  - echo 'Nothing to do...'
   artifacts:
     paths:
-      -public
-  rules:
-    - if: '$CI_COMMIT_BRANCH = "gh-pages"'
-      
+    - public/
+  only:
+    - pages
