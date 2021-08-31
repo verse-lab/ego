@@ -1,0 +1,14 @@
+image: ruby:2.7
+
+workflow:
+  rules:
+    - if: '$CI_COMMIT_BRANCH'
+
+pages:
+  scripts:
+  artifacts:
+    paths:
+      -public
+  rules:
+    - if: '$CI_COMMIT_BRANCH = "gh-pages"'
+      
