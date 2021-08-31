@@ -1,4 +1,4 @@
-image: alpine:latest
+image: ruby:2.7
 
 pages:
   script:
