@@ -1,4 +1,4 @@
-image: ruby:2.7
+image: alpine:latest
 
 workflow:
   rules:
@@ -6,6 +6,7 @@ workflow:
 
 pages:
   scripts:
+    - echo 'Nothing to do...'
   artifacts:
     paths:
       -public
