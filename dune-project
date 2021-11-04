@@ -12,7 +12,7 @@
   (ppx_deriving (>= 4.4))
   (ocamldot (>= 1.1))
   (sexplib (>= v0.14.0))))
-(version 0.0.5)
+(version 0.0.6)
 (name ego)
 (generate_opam_files true)
 (license GPL-3.0+)
