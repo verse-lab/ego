@@ -117,7 +117,7 @@ module MakePrinter (L: LANGUAGE) (A: ANALYSIS) = struct
       let pp_node_by_id fmt id =
         let id = self.@[find] id in
         begin
-          let vls = Id.Map.find_opt eclasses id |> Option.get_or ~default:(Vector.create ()) in
+          let vls = Id.Map.find_opt eclasses id |> Option.get_lazy Vector.create in
           let open Format in
           pp_print_string fmt "{";
           pp_open_hovbox fmt 1;

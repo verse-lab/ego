@@ -43,15 +43,15 @@ module Backoff = struct
       let delta = min_ban - iteration in
 
       Iter.of_array banned
-      |> Iter.iter (fun data -> data.banned_until <- data.ban_length - delta) ;
+      |> Iter.iter (fun data -> data.banned_until <- data.banned_until - delta) ;
 
       false
     end
 
 
   let guard_rule_usage _ (_ : t) (data: data) iteration
-        (gen_matches: (unit -> (Id.t * Id.t StringMap.t) Iter.t)) : (Id.t * Id.t StringMap.t) Iter.t =
-
+        (gen_matches: (unit -> (Id.t * Id.t StringMap.t) Iter.t)) :
+    (Id.t * Id.t StringMap.t) Iter.t =
     if iteration < data.banned_until
     then Iter.empty
     else begin

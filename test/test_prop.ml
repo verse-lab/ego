@@ -216,10 +216,11 @@ let rules = [
   (* lem_imply *) [%s (("?a" => "?b") && ((not "?a") => "?c")) ] @-> [%s ("?b" || "?c") ];
 ]
 
-let proves ?node_limit ?fuel start goals () =
+let proves  ?(match_limit=1_000) ?(ban_length=5) ?node_limit ?fuel start goals () =
   let graph = EGraph.init () in
   let start = EGraph.add_node graph (L.of_sexp start) in
-  ignore @@ EGraph.run_until_saturation ?fuel ?node_limit graph rules;
+  let scheduler = Ego.Generic.Scheduler.Backoff.with_params ~match_limit ~ban_length in
+  ignore @@ EGraph.run_until_saturation ~scheduler ?fuel ?node_limit graph rules;
   List.iter (fun goal ->
     let goal = EGraph.add_node graph (L.of_sexp goal) in
     Alcotest.(check bool)
@@ -228,7 +229,7 @@ let proves ?node_limit ?fuel start goals () =
       (EGraph.class_equal (EGraph.freeze graph) start goal)
   ) goals
 
-let proves_cached ?node_limit ?fuel start goals () =
+let proves_cached ?(match_limit=1_000) ?(ban_length=5) ?node_limit ?fuel start goals () =
   let graph = EGraph.init () in
   let start = EGraph.add_node graph (L.of_sexp start) in
   let goals = List.map (fun goal -> EGraph.add_node graph (L.of_sexp goal)) goals in
@@ -237,7 +238,8 @@ let proves_cached ?node_limit ?fuel start goals () =
       | [] -> acc
       | h :: t -> last h t in
     last start goals in
-  ignore @@ EGraph.run_until_saturation ?fuel ?node_limit ~until:(fun graph ->
+  let scheduler = Ego.Generic.Scheduler.Backoff.with_params ~match_limit ~ban_length in
+  ignore @@ EGraph.run_until_saturation ~scheduler ?fuel ?node_limit ~until:(fun graph ->
     EGraph.class_equal (EGraph.freeze graph) start last
   ) graph rules;
   List.iter (fun goal ->
@@ -282,22 +284,26 @@ let () =
                                           [%s ((y => z) && ((not y) => (not x)))];
                                           [%s (z || (not x))]
                                          ];
-      "proves commutativity", `Quick, proves_cached ~node_limit:(`Bounded 10_000)
+      "proves commutativity", `Quick, proves
+                                        ~node_limit:(`Bounded 10_000)
                                         ~fuel:(`Bounded 60)
                                         [%s ((x => y) && (y => z))]
-                                         [[%s ((x => y) && (y => z))];
-                                          [%s (((not y) => (not x)) && (y => z))];
-                                          [%s ((y => z) && ((not y) => (not x)))];
-                                          [%s (z || (not x))];
-                                          [%s ((not x) || z)]; ];
+                                        [[%s ((x => y) && (y => z))];
+                                         [%s (((not y) => (not x)) && (y => z))];
+                                         [%s ((y => z) && ((not y) => (not x)))];
+                                         [%s (z || (not x))];
+                                         [%s ((not x) || z)]; ];
       "proves chain", `Quick, proves_cached
-                                        [%s ((x => y) && (y => z))]
-                                         [[%s ((x => y) && (y => z))];
-                                          [%s (((not y) => (not x)) && (y => z))];
-                                          [%s ((y => z) && ((not y) => (not x)))];
-                                          [%s (z || (not x))];
-                                          [%s ((not x) || z)];
-                                          [%s (x => z)];
-                                         ]
+                                ~match_limit:(10_000) ~ban_length:5
+                                ~node_limit:(`Bounded 600_000)
+                                ~fuel:(`Bounded 50)
+                                [%s ((x => y) && (y => z))]
+                                [[%s ((x => y) && (y => z))];
+                                 [%s (((not y) => (not x)) && (y => z))];
+                                 [%s ((y => z) && ((not y) => (not x)))];
+                                 [%s (z || (not x))];
+                                 [%s ((not x) || z)];
+                                 [%s (x => z)];
+                                ]
     ]]
 
