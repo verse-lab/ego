@@ -347,7 +347,8 @@ struct
       (* make cls1 the new root *)
       assert (Id.eq_id id1 (Id.union self.uf id1 id2));
 
-      let cls2 = self.@[remove_class_data] id2 |> Option.get_exn in
+      let cls2 = self.@[remove_class_data] id2
+                 |> Option.get_exn_or "Invariant violation" in
       let cls1 = self.@[get_class_data] id1 in
       assert (Id.eq_id id1 cls1.id);
 
