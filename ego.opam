@@ -19,6 +19,7 @@ depends: [
   "ocamldot" {>= "1.1"}
   "sexplib" {>= "v0.14.0"}
   "odoc" {with-doc}
+  "ppx_inline_alcotest" {with-test}
 ]
 build: [
   ["dune" "subst"] {dev}
