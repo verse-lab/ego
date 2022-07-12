@@ -118,7 +118,7 @@ We express {i rewrites} in Ego through two components: {!Ego.Basic.Query}s and
    subexpressions in the term language, and an {b into} query that
    then rearranges the subexpressions bound in the from query.
 
-Let's build a rule to transform expressions of the form [a << 1] into [a * 1].
+Let's build a rule to transform expressions of the form [a << 1] into [a * 2].
 
 We can build our from pattern using {!Ego.Basic.Query.of_sexp}:
 
