@@ -391,38 +391,30 @@ module EGraph = struct
 
   (* ** Matching *)
   let ematch eg classes pattern =
+    let concat_map f l = Iter.concat (Iter.map f l) in
     let rec enode_matches p enode env =
       match[@warning "-8"] p,enode with
       | Query.(Q (f, _), (f', _)) when not @@ (Equal.map Symbol.repr Equal.int) f f' ->
-        None
+        Iter.empty
       | (Q (_, args), (_, args')) ->
         (fun f -> List.iter2 (Fun.curry f) args args')
-        |> Iter.fold_while (fun env (qvar, trm) ->
-          match env with
-          | None -> None, `Stop
-          | Some env ->
-            match match_in qvar trm env with
-            | Some _ as res -> res, `Continue
-            | None -> None, `Stop
-        ) (Some env)
+        |> Iter.fold (fun envs (qvar, trm) ->
+          concat_map (fun env' -> match_in qvar trm env') envs) (Iter.singleton env)
     and match_in p eid env =
       let eid = find eg eid in
       match p with
       | V id -> begin
           match StringMap.find_opt id env with
-          | None -> Some (StringMap.add id eid env)
-          | Some eid' when Id.eq_id eid eid' -> Some env
-          | _ -> None
+          | None -> Iter.singleton (StringMap.add id eid env)
+          | Some eid' when Id.eq_id eid eid' -> Iter.singleton env
+          | _ -> Iter.empty
         end
       | p ->
         Vector.to_iter (Id.Map.find classes eid)
-        |> Iter.find_map (fun enode -> enode_matches p enode env) in
+        |> concat_map (fun enode -> enode_matches p enode env) in
     (fun f -> Id.Map.iter (Fun.curry f) classes)
-    |> Iter.filter_map (fun (eid,_) ->
-      match match_in pattern eid StringMap.empty with
-      | Some env -> Some ((eid, env))
-      | _ -> None
-    )
+    |> concat_map (fun (eid, _) ->
+        Iter.map (fun s -> (eid, s)) (match_in pattern eid StringMap.empty))
 
   (* ** Rewriting System *)
   let apply_rules eg rules =
@@ -457,3 +449,33 @@ module EGraph = struct
 
 
 end
+
+let%test "test egraph matching" =
+  let g = EGraph.init () in
+  let g1 = EGraph.add_sexp g [%s g 1] in
+  let g2 = EGraph.add_sexp g [%s g 2] in
+  EGraph.merge g g1 g2;
+  EGraph.rebuild g;
+  let query = Query.of_sexp [%s g "?a"] in
+  let matches = EGraph.ematch g (EGraph.eclasses g) query |> Iter.to_list in
+  (* Should have two matches: (g 1) and (g 2) *)
+  Alcotest.(check int) "(g ?a) has 2 matches"
+    2 (List.length matches)
+
+let%test "test egraph matching" =
+  let g = EGraph.init () in
+  let g1 = EGraph.add_sexp g [%s g 1] in
+  let g2 = EGraph.add_sexp g [%s g 2] in
+  let g3 = EGraph.add_sexp g [%s g 3] in
+  let f1 = EGraph.add_sexp g [%s (f 1 (g 2))] in
+  let f2 = EGraph.add_sexp g [%s (f 2 (g 3))] in
+  let f3 = EGraph.add_sexp g [%s (f 3 (g 1))] in
+  EGraph.merge g g1 g2;
+  EGraph.merge g g2 g3;
+  EGraph.merge g f1 f2;
+  EGraph.merge g f2 f3;
+  EGraph.rebuild g;
+  let query = Query.of_sexp [%s f "?a" (g "?a")] in
+  let matches = EGraph.ematch g (EGraph.eclasses g) query |> Iter.to_list in
+  Alcotest.(check int) "has 3 matches"
+    3 (List.length matches)
