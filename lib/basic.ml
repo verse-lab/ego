@@ -457,3 +457,35 @@ module EGraph = struct
 
 
 end
+
+let%test "test egraph matching" =
+  let g = EGraph.init () in
+  let g1 = EGraph.add_sexp g [%s g 1] in
+  let g2 = EGraph.add_sexp g [%s g 2] in
+  EGraph.merge g g1 g2;
+  EGraph.rebuild g;
+  let query = Query.of_sexp [%s g "?a"] in
+  let matches = EGraph.ematch g (EGraph.eclasses g) query |> Iter.to_list in
+  (* Should have two matches: (g 1) and (g 2) *)
+  Alcotest.(check int) "(g ?a) has 2 matches"
+    2 (List.length matches)
+
+(*
+let%test "test egraph matching" =
+  let g = EGraph.init () in
+  let g1 = EGraph.add_sexp g [%s g 1] in
+  let g2 = EGraph.add_sexp g [%s g 2] in
+  let g3 = EGraph.add_sexp g [%s g 3] in
+  let f1 = EGraph.add_sexp g [%s (f 1 (g 1))] in
+  let f2 = EGraph.add_sexp g [%s (f 2 (g 2))] in
+  let f3 = EGraph.add_sexp g [%s (f 3 (g 3))] in
+  EGraph.merge g g1 g2;
+  EGraph.merge g g2 g3;
+  EGraph.merge g f1 f2;
+  EGraph.merge g f2 f3;
+  EGraph.rebuild g;
+  let query = Query.of_sexp [%s f "?a" (g "?a")] in
+  let matches = EGraph.ematch g (EGraph.eclasses g) query |> Iter.to_list in
+  Alcotest.(check int) "has 3 matches"
+    3 (List.length matches)
+*)

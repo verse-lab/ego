@@ -3,8 +3,8 @@
  (public_name ego)
  (libraries containers iter dot containers-data sexplib)
  (inline_tests)
- (preprocess (pps ppx_inline_alcotest ppx_deriving.std)))
+ (preprocess (pps ppx_sexp ppx_inline_alcotest ppx_deriving.std)))
 
 (env
  (dev  
-   (flags (:standard -w -58))))
+   (flags (:standard -w -58 -warn-error -A))))
