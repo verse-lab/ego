@@ -251,6 +251,27 @@ let proves_cached ?(match_limit=1_000) ?(ban_length=5) ?node_limit ?fuel start g
 
 let () =
   Alcotest.run "prop" [
+    "ematch tests", [
+      "check matches after merging", `Quick, 
+        (fun () -> let graph = EGraph.init () in
+        let n1 = EGraph.add_node graph (L.of_sexp [%s (x && z)]) in
+        let n2 = EGraph.add_node graph (L.of_sexp [%s (y && z)]) in
+        EGraph.merge graph n1 n2;
+        EGraph.rebuild graph;
+        let query = qf [%s "?a" && z] in
+        let matches = EGraph.find_matches (EGraph.freeze graph) query |> Iter.length in
+        Alcotest.(check int) "2 matches" 2 matches);
+
+      "check matches after saturating", `Quick, 
+        fun () -> let graph = EGraph.init () in
+        let scheduler = Ego.Generic.Scheduler.Backoff.with_params ~match_limit:1000 ~ban_length:5 in
+        let _ = EGraph.add_node graph (L.of_sexp [%s (x && y)]) in
+        let query = [%s "?a" && "?b"] @-> [%s "?b" && "?a"] in
+        ignore @@ EGraph.run_until_saturation ~scheduler graph [query];
+        let q = qf [%s "?a" && "?b"] in
+        let matches = EGraph.find_matches (EGraph.freeze graph) q |> Iter.length in
+        Alcotest.(check int) "2 matches" 2 matches
+    ];
     "proving contrapositive", [
       "proves idempotent", `Quick, proves [%s (x => y)] [[%s (x => y)]];
       "proves negation", `Quick, proves [%s (x => y)] [[%s (x => y)];

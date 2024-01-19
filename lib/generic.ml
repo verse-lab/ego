@@ -421,38 +421,32 @@ struct
 
   (* ** Matching *)
   let ematch eg (classes: (Id.t L.shape, 'a) Vector.t Id.Map.t) pattern =
+    let concat_map f l = Iter.concat (Iter.map f l) in
     let rec enode_matches p enode env =
       match[@warning "-8"] p with
       | Query.Q (f, _) when not @@ L.equal_op f (L.op enode) ->
-        None
+        Iter.empty
       | Q (_, args) ->
         (fun f -> List.iter2 (Fun.curry f) args (L.children enode))
-        |> Iter.fold_while (fun env (qvar, trm) ->
-          match env with
-          | None -> None, `Stop
-          | Some env ->
-            match match_in qvar trm env with
-            | Some _ as res -> res, `Continue
-            | None -> None, `Stop
-        ) (Some env)
+        |> Iter.fold (fun envs (qvar, trm) ->
+          concat_map (fun env' -> match_in qvar trm env') envs) (Iter.singleton env)
     and match_in p eid env =
       let eid = find eg eid in
       match p with
       | V id -> begin
           match StringMap.find_opt id env with
-          | None -> Some (StringMap.add id eid env)
-          | Some eid' when Id.eq_id eid eid' -> Some env
-          | _ -> None
+          | None -> Iter.singleton (StringMap.add id eid env)
+          | Some eid' when Id.eq_id eid eid' -> Iter.singleton env
+          | _ -> Iter.empty
         end
       | p ->
-        Option.bind (Id.Map.find_opt classes eid)
-        (fun v -> Vector.to_iter v |> Iter.find_map (fun enode -> enode_matches p enode env)) in
+        match Id.Map.find_opt classes eid with
+        | Some v -> Vector.to_iter v |> concat_map (fun enode -> enode_matches p enode env)
+        | None -> Iter.empty
+      in
     (fun f -> Id.Map.iter (Fun.curry f) classes)
-    |> Iter.filter_map (fun (eid,_) ->
-      match match_in pattern eid StringMap.empty with
-      | Some env -> Some (eid, env)
-      | _ -> None
-    )
+    |> concat_map (fun (eid, _) ->
+       Iter.map (fun s -> (eid, s)) (match_in pattern eid StringMap.empty))
 
   let find_matches eg =
     let eclasses = eclasses eg in
