@@ -36,7 +36,7 @@ let documentation_example () =
       We start off with two exprs, (g 1) and (g 2), and merge these two.
       Then we add a rule (g ?a) -> (h ?a), creating (h 1) and (h 2) which are also equal to (g 1) and (g 2).
       We extract the cheapest term using a cost function constructed such that (h 2) is lowest cost term, with cost 11.
-      However, (h 1), which has cost 12, is extracted instead.
+      Previously (h 1), which has cost 12, was extracted instead.
 
       (h 1): 12
       (h 2): 11

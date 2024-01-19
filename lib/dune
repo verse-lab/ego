@@ -7,4 +7,4 @@
 
 (env
  (dev  
-   (flags (:standard -w -58 -warn-error -A))))
+   (flags (:standard -w -58))))
