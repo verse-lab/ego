@@ -410,8 +410,10 @@ module EGraph = struct
           | _ -> Iter.empty
         end
       | p ->
-        Vector.to_iter (Id.Map.find classes eid)
-        |> concat_map (fun enode -> enode_matches p enode env) in
+        match Id.Map.find_opt classes eid with
+        | Some v -> Vector.to_iter v |> concat_map (fun enode -> enode_matches p enode env)
+        | None -> Iter.empty
+      in
     (fun f -> Id.Map.iter (Fun.curry f) classes)
     |> concat_map (fun (eid, _) ->
         Iter.map (fun s -> (eid, s)) (match_in pattern eid StringMap.empty))

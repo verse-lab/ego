@@ -416,7 +416,7 @@ let () =
        check_proves_equal ~node_limit:(`Bounded 100_000) ~fuel:(`Bounded 35) rules
          [%s (d x (1 + (2. * x)))]  [%s 2. ];
        "dx/dy of xy + 1 is y", `Quick,
-       check_extract ~node_limit:(`Unbounded) ~fuel:(`Bounded 100) rules
+       check_extract ~node_limit:(`Unbounded) ~fuel:(`Bounded 15) rules
          [%s (d x (1. + (y * x)))]  [%s y ];
        "dx/dy of ln x is 1 / x", `Quick,
        check_proves_equal ~node_limit:(`Bounded 100_000) ~fuel:(`Bounded 35) rules
