@@ -236,8 +236,8 @@ module L = struct
 ]}
 
 The first type we'll need to supply is a polymorphic type ['a shape], that
-captures the {i shape} of the expression langauge, with the type
-parameter ['a] encoding recursive occurances:
+captures the {i shape} of the expression language, with the type
+parameter ['a] encoding recursive occurrences:
 
 {[
 type 'a shape =
@@ -337,7 +337,7 @@ By separating out expressions into ['a shape] and their discriminants
 Loosely following Rust's egg library, {{:#top}Ego} allows users to run
 EClass analyses over its EGraphs - the idea here is that we can attach
 additional information to the equivalence classes in our EGraph, and
-then use this to perform more complex rewrites in a principaled way.
+then use this to perform more complex rewrites in a principled way.
 
 We can define EClass analyses in {{:#top}Ego} in two steps:
 
@@ -427,13 +427,13 @@ analysis. To do so, we'll need to define three functions:
   should generate a new abstract value for the node, usually using the
   abstract values of its children.
 
-- A [merge] operation, which is called whenever two equivalance
+- A [merge] operation, which is called whenever two equivalence
   classes are merged and should produce a new abstract value that
   represents the merge of their corresponding abstract values.
 
 - A [modify] operation, which is called whenever the children or
-  abstract values of an eclass are modified and may use the abstract
-  value of its to modify the egraph.
+  abstract values of an eclass are modified, and may modify the
+  egraph.
 
 Let's have a look at the implementation of each one of these
 operations for our constant folding analysis.
