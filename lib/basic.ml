@@ -70,7 +70,7 @@ type egraph = {
   class_members: (enode * Id.t) Vector.vector Id.Map.t; (* maps classes to the canonical nodes
                                                            they contain, and any classes that are
                                                            children of these nodes *)
-  hash_cons: (enode, Id.t) Hashtbl.t;                   (* maps cannonical nodes to their
+  hash_cons: (enode, Id.t) Hashtbl.t;                   (* maps canonical nodes to their
                                                            equivalence classes *)
   worklist: Id.t Vector.vector;                        (* List of equivalence classes for which
                                                           nodes are out of date - i.e
@@ -164,7 +164,7 @@ module EGraph = struct
       Id.Map.add self.class_members id cls;
       cls
 
-  (* Adds a node into the egraph, assuming that the cannonical version
+  (* Adds a node into the egraph, assuming that the canonical version
      of the node is up to date in the hash cons or 
   *)
   let add_enode self node =

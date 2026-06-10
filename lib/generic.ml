@@ -38,7 +38,7 @@ type ('node, 'analysis, 'data, 'permission) egraph = {
     ('node, 'data) eclass Id.Map.t;       (* maps classes to the canonical nodes
                                                                      they contain, and any classes that are
                                                                      children of these nodes *)
-  hash_cons: ('node, Id.t) Hashtbl.t;                  (* maps cannonical nodes to their
+  hash_cons: ('node, Id.t) Hashtbl.t;                  (* maps canonical nodes to their
                                                           equivalence classes *)
   pending: ('node * Id.t) Vector.vector;
 
@@ -289,7 +289,7 @@ struct
 
   let freeze (graph: (_, _, _, rw) egraph) = (graph:> (_, _, _, ro) egraph)
 
-  (* Adds a node into the egraph, assuming that the cannonical version
+  (* Adds a node into the egraph, assuming that the canonical version
      of the node is up to date in the hash cons or 
   *)
   let add_enode self (node: Id.t L.shape) =
