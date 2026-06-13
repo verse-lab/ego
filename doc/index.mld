@@ -259,7 +259,7 @@ and is just there for efficiently storing terms of the language.
 We'll also define a basic pretty printer for ['a shape]:
 
 {[
-let pp f fmt = function
+let pp_data f fmt = function
   | Add (l,r) -> Format.fprintf fmt "(%a + %a)" f l f r
   | Sub (l,r) -> Format.fprintf fmt "(%a - %a)" f l f r
   | Mul (l,r) -> Format.fprintf fmt "(%a * %a)" f l f r
