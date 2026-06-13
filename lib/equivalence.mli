@@ -1,6 +1,6 @@
 module Make : functor () -> sig
   type store
-  type t = private int
+  type t
 
   val repr : t -> int
   val create_store : unit -> store
