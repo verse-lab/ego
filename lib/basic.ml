@@ -74,7 +74,7 @@ type egraph = {
                                                            equivalence classes *)
   worklist: Id.t Vector.vector;                        (* List of equivalence classes for which
                                                           nodes are out of date - i.e
-                                                          cannoncial(node) != node *)
+                                                          canonical(node) != node *)
 }
 
 
