@@ -6,7 +6,7 @@ module IntSet = CCHashSet.Make (Int)
 module Make  = functor () -> struct
 
   type elem =
-    | Root of int
+    | Root
     | Link of elem_ref
   and elem_ref = int
   and store = {
@@ -25,22 +25,15 @@ module Make  = functor () -> struct
 
   let hash = Int.hash
 
-  let rref (store: store) vl =
+  let make (store: store) () =
     let x = store.limit in
     store.limit <- x + 1;
-    IntMap.replace store.content x vl;
+    IntMap.replace store.content x Root;
     x
-
-  let make_raw =
-    let id = ref 0 in
-    fun () -> incr id; (Root !id)
-
-  let make store () =
-    rref store @@ make_raw ()
 
   let rec find store x =
     match store.@[x] with
-    | Root _ -> x
+    | Root -> x
     | Link y ->
       let z = find store y in
       if not @@ Equal.physical z y then
@@ -54,7 +47,7 @@ module Make  = functor () -> struct
   let link store x y =
     if Equal.physical x y then x
     else match[@warning "-8"] store.@[x], store.@[y] with
-      | Root _, Root _ -> store.@[y] <- Link x; x
+      | Root, Root -> store.@[y] <- Link x; x
         (* if vx < vy then (store.@[x] <- Link y; y)
          * else if vy > vx then (store.@[y] <- Link x; x)
          * else (store.@[y] <- Link x;
