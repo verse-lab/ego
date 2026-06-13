@@ -5,54 +5,43 @@ module IntSet = CCHashSet.Make (Int)
 
 module Make  = functor () -> struct
 
-  type elem =
-    | Root
-    | Link of elem_ref
-  and elem_ref = int
-  and store = {
-    mutable limit: int;
-    content: elem IntMap.t
-  } 
+  type parent = Parent of idx [@@unboxed]
+  and idx = int
+  and store = parent Vector.vector
 
-  type t = elem_ref
+  type t = idx
 
   let repr v = v
 
-  let (.@[]) store rf = IntMap.find store.content rf
-  let (.@[]<-) store rf vl = IntMap.replace store.content rf vl
+  let (.@[]) = Vector.get
+  let (.@[]<-) = Vector.set
 
-  let create_store () = {limit=0; content=IntMap.create 100}
+  let create_store () = Vector.create ()
 
   let hash = Int.hash
 
   let make (store: store) () =
-    let x = store.limit in
-    store.limit <- x + 1;
-    IntMap.replace store.content x Root;
+    let x = Vector.length store in
+    Vector.push store (Parent x);
     x
 
   let rec find store x =
-    match store.@[x] with
-    | Root -> x
-    | Link y ->
+    let (Parent y) = store.@[x] in
+    if y = x then x
+    else begin
       let z = find store y in
-      if not @@ Equal.physical z y then
-        store.@[x] <- Link z;
+      if y <> z then store.@[x] <- Parent z;
       z
+    end
+
   let equal store t1 t2 =
     let t1 = find store t1 in
     let t2 = find store t2 in
-    Equal.physical t1 t2
+    Int.equal t1 t2
 
   let link store x y =
-    if Equal.physical x y then x
-    else match[@warning "-8"] store.@[x], store.@[y] with
-      | Root, Root -> store.@[y] <- Link x; x
-        (* if vx < vy then (store.@[x] <- Link y; y)
-         * else if vy > vx then (store.@[y] <- Link x; x)
-         * else (store.@[y] <- Link x;
-         *       store.@[x] <- make_raw ();
-         *       x) *)
+    if x <> y then store.@[y] <- Parent x;
+    x
 
   let union store x y =
     let x = find store x in
