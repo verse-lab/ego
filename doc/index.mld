@@ -259,7 +259,7 @@ and is just there for efficiently storing terms of the language.
 We'll also define a basic pretty printer for ['a shape]:
 
 {[
-let pp f fmt = function
+let pp_data f fmt = function
   | Add (l,r) -> Format.fprintf fmt "(%a + %a)" f l f r
   | Sub (l,r) -> Format.fprintf fmt "(%a - %a)" f l f r
   | Mul (l,r) -> Format.fprintf fmt "(%a * %a)" f l f r
@@ -361,6 +361,7 @@ module A = struct
 
   type data = int option [@@deriving eq, show]
 
+  let default = None
 end
 ]}
 
@@ -380,6 +381,7 @@ module MA (S : GRAPH_API
            with type 'p t = (Ego.Id.t L.shape, A.t, A.data, 'p) egraph
            and type analysis := A.t
            and type data := A.data
+	   and type 'a shape := 'a L.shape
            and type node := L.t)  = struct
 ]}
 
