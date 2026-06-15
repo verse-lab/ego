@@ -21,7 +21,7 @@ module Id : sig
       data-structures provided by {!Ego}. *)
 
 
-  type t = private int
+  type t
   (** An abstract datatype used to represent equivalence classes in
       {!Ego}. *)
 

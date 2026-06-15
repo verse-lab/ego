@@ -13,7 +13,7 @@ module EClassId = struct
   let show = str pp
 
   let compare (a:t) (b: t) =
-    Int.compare (a :> int) (b :> int)
+    Int.compare (Id.repr a) (Id.repr b)
 
   let%test "IDs print correctly" =
     let store = Id.create_store () in
